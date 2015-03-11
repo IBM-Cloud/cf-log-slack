@@ -1,0 +1,8 @@
+---
+
+applications:
+- name:      cf-log-slack
+  host:      cf-log-slack-SOMETHING-UNIQUE
+  memory:    256M
+  command:   node server
+  buildpack: https://github.com/heroku/heroku-buildpack-nodejs.git

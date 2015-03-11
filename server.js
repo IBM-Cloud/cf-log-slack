@@ -1,27 +1,41 @@
 // Licensed under the Apache License. See footer for details.
 
+"use strict"
+
 const http = require("http")
+const path = require("path")
 
-const hapi  = require("hapi")
-const cfenv = require("cfenv")
+const hapi   = require("hapi")
+const cfenv  = require("cfenv")
+const concat = require("concat-stream")
 
-const debug         = require("./lib/debug")
+const utils         = require("./lib/utils")
 const altStackTrace = require("./lib/altStackTrace")
+const messages      = require("./lib/messages")
+const slack         = require("./lib/send-slack-webhook")
 
 const pkg = require("./package.json")
+
+let appEnvOpts = {}
+try {
+  // allow overrides when running locally
+  appEnvOpts.vcap = require("./tmp/vcap.json")
+}
+catch(e) {}
 
 exports.version = pkg.version
 exports.main    = main
 
 //------------------------------------------------------------------------------
-const appEnv = cfenv.getAppEnv()
+const appEnv = cfenv.getAppEnv(appEnvOpts)
 
-const DEBUGinit  = debug.createDebug(appEnv.name + ":init")
-const DEBUGserver= debug.createDebug(appEnv.name + ":server")
-const DEBUGexit  = debug.createDebug(appEnv.name + ":exit")
-const DEBUGerror = debug.createDebug(appEnv.name + ":error")
+utils.appName = appEnv.name
 
-const DEBUGdrain = debug.createDebug(appEnv.name + ":drain")
+const DEBUGinit  = utils.createDebug("init")
+const DEBUGserver= utils.createDebug("server")
+const DEBUGexit  = utils.createDebug("exit")
+const DEBUGerror = utils.createDebug("error")
+const DEBUGdrain = utils.createDebug("drain")
 
 if (require.main == module) main()
 
@@ -43,87 +57,88 @@ function main() {
     process.exit(1)
   })
 
-  http.createServer(function (request, response) {
-    console.log("")
-    console.log(request.method, request.headers)
-    console.log("")
-    request.pipe(process.stdout)
+  //----------------------------------------------------------------------------
+  let server = http.createServer(requestHandler)
 
-    response.writeHead(200, {"Content-Type": "text/plain"})
-    response.end("")
-  }).listen(appEnv.port)
+  console.log("server starting on " + appEnv.url)
+  server.listen(appEnv.port, appEnv.bind, function() {
+    console.log("server started  on " + appEnv.url)
+  })
+}
 
-  console.log("Server running at " + appEnv.url)
+//------------------------------------------------------------------------------
+function requestHandler(request, response) {
+  if (request.headers["content-type"] != "text/plain") {
+    return sendLogResponse(response)
+  }
 
+  const channel = path.basename(request.url)
 
-  if (false) {
-    //------------------------------------------------------------------------------
-    DEBUGinit("creating Hapi server")
-    const server = new hapi.Server()
+  const webHookInfo = appEnv.getServiceCreds(channel)
 
-    //------------------------------------------------------------------------------
-    DEBUGinit("setting host/port for server")
-    server.connection({host: appEnv.bind, port: appEnv.port})
+  if (null == webHookInfo) {
+    DEBUGdrain(`request for unbound service: ${channel}`)
+    return sendLogResponse(response)
+  }
 
-    //------------------------------------------------------------------------------
-    DEBUGinit("setting up Hapi error handler to debug log and exit")
-    server.on("request-error", function (request, err) {
-      DEBUGerror("exception: " + err.stack)
-      process.exit(1)
-    })
+  if (null == webHookInfo.url) {
+    DEBUGdrain(`request for service: ${channel}, but service has no "url" property`)
+    return sendLogResponse(response)
+  }
 
-    //------------------------------------------------------------------------------
-    DEBUGinit("setting up route for static files")
-    server.route({
-      method:  "GET",
-      path:    "/{param*}",
-      handler: { directory: { path: "www" } }
-    })
+  let contentStream = concat(function(content) {
+    processLogMessages(webHookInfo, content)
+  })
 
-    //------------------------------------------------------------------------------
-    DEBUGinit("setting up route for drains")
-    server.route({
-      method:  "*",
-      path:    "/drain/{drain}",
-      handler: handleDrain,
-      config: {
-        payload: {
-          output: "data",
-          parse:  ""
-        }
+  request.pipe(contentStream)
 
-      }
-    })
+  sendLogResponse(response)
+}
 
-    //------------------------------------------------------------------------------
-    DEBUGserver("starting on: " + appEnv.url)
+//------------------------------------------------------------------------------
+function processLogMessages(webHookInfo, content) {
+  DEBUGdrain(`content: ${content}`)
+  let msgs = messages.splitMessages(content)
 
-    server.start(function() {
-      DEBUGserver("started  on: " + appEnv.url)
-    })
+  for (let i=0; i<msgs.length; i++) {
+    let msg = messages.splitMessage(msgs[i])
+    DEBUGdrain(`msg: ${msg}`)
+
+    processLogMessage(webHookInfo, msg)
   }
 }
 
-/*
-messages from log drain:
-method: POST
-content: (first is 184 bytes)
-180 <14>1 2015-03-06T06:40:23.088353+00:00 loggregator df9a0c87-9405-4b27-88ef-7e42d09747c2 [API] - - Updated app with guid df9a0c87-9405-4b27-88ef-7e42d09747c2 ({"state"=>"STOPPED"})
-180 <14>1 2015-03-06T06:40:24.189079+00:00 loggregator df9a0c87-9405-4b27-88ef-7e42d09747c2 [API] - - Updated app with guid df9a0c87-9405-4b27-88ef-7e42d09747c2 ({"state"=>"STARTED"})
-177 <14>1 2015-03-06T06:40:24.194799+00:00 loggregator df9a0c87-9405-4b27-88ef-7e42d09747c2 [DEA] - - Starting app instance (index 0) with guid df9a0c87-9405-4b27-88ef-7e42d09747c2
-132 <14>1 2015-03-06T06:40:44.129826+00:00 loggregator df9a0c87-9405-4b27-88ef-7e42d09747c2 [App/0] - - node-stuff: newrelic configured
+//------------------------------------------------------------------------------
+function processLogMessage(webHookInfo, msg) {
+  // msg = {
+  //   date:      string
+  //   component: string
+  //   message:   string
+  // }
 
-- will maybe need to chunk de-code the content into separate messages
-- replace /with guid \W+//
+  let payload    = {
+    text:       `${msg.component}: ${msg.message}`,
+    icon_emoji: ":computer:"
+  }
 
-<14>1 2015-03-06T06:40:44.129826+00:00 loggregator df9a0c87-9405-4b27-88ef-7e42d09747c2 [App/0] - - node-stuff: newrelic configured
-regex: /.*? loggregator .*? [((.*?)/.*?)] .*? .*? (.*)
-*/
+  copyOverride(webHookInfo, payload, "username")
+  copyOverride(webHookInfo, payload, "icon_url")
+  copyOverride(webHookInfo, payload, "icon_emoji")
+  copyOverride(webHookInfo, payload, "channel")
+  copyOverride(webHookInfo, payload, "username")
+
+  slack.send(webHookInfo.url, payload)
+}
 
 //------------------------------------------------------------------------------
-function handleDrain(request, reply) {
-  DEBUGdrain("request for drain " + request.params.drain)
-  reply("")
+function copyOverride(webHookInfo, payload, property) {
+  if (webHookInfo[property]) payload[property] = webHookInfo[property]
+}
+
+//------------------------------------------------------------------------------
+function sendLogResponse(response) {
+  response.writeHead(200, {"Content-Type": "text/plain"})
+  response.end("Hello, world!")
 }
 
 //------------------------------------------------------------------------------

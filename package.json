@@ -9,7 +9,9 @@
     "type":             "git",
     "url" :             "https://github.com/IBM-Bluemix/log-slack.git"
   },
-
+  "engines": {
+    "iojs":             "1.x"
+  },
   "main":               "server",
   "scripts": {
     "cake":             "cake",
@@ -18,7 +20,9 @@
   },
   "dependencies": {
     "cfenv":            "1.0.x",
+    "concat-stream":    "1.4.x",
     "hapi":             "8.2.x",
+    "request":          "2.53.x",
     "underscore":       "1.8.x"
   },
   "devDependencies": {

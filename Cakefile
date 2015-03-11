@@ -9,7 +9,7 @@ task "watch", "watch for source file changes, restart server", -> taskWatch()
 task "serve", "start server",                                  -> taskServe()
 task "test",  "run tests",                                     -> taskTest()
 
-WatchSpec = "*.js lib/**/* www/**/* tests/**/*"
+WatchSpec = "*.js lib/**/* tests/**/*"
 
 mkdir "-p", "tmp"
 
@@ -30,8 +30,6 @@ taskWatch = ->
 
 #-------------------------------------------------------------------------------
 watchIter = (file) ->
-  copyBowerFiles "www/bower"
-
   taskTest()
   taskServe()
 
@@ -51,32 +49,6 @@ taskTest = ->
   opts = { stdio: "inherit" }
 
   child_process.spawnSync(cmd, args, opts)
-
-#-------------------------------------------------------------------------------
-copyBowerFiles = (dir) ->
-  bowerConfig = require "./bower-config"
-
-  log "installing files from bower"
-
-  cleanDir dir
-
-  for name, {version, files} of bowerConfig
-    unless test "-d", "bower_components/#{name}"
-      bower "install #{name}##{version}"
-      log ""
-
-  for name, {version, files} of bowerConfig
-    for src, dst of files
-      src = "bower_components/#{name}/#{src}"
-
-      if dst is "."
-        dst = "#{dir}/#{name}"
-      else
-        dst = "#{dir}/#{name}/#{dst}"
-
-      mkdir "-p", dst
-
-      cp "-R", src, dst
 
 #-------------------------------------------------------------------------------
 cleanDir = (dir) ->
