@@ -5,7 +5,6 @@
 const http = require("http")
 const path = require("path")
 
-const hapi   = require("hapi")
 const cfenv  = require("cfenv")
 const concat = require("concat-stream")
 
@@ -97,12 +96,12 @@ function requestHandler(request, response) {
 
 //------------------------------------------------------------------------------
 function processLogMessages(webHookInfo, content) {
-  DEBUGdrain(`content: ${content}`)
+  // DEBUGdrain(`content: ${content}`)
   let msgs = messages.splitMessages(content)
 
   for (let i=0; i<msgs.length; i++) {
     let msg = messages.splitMessage(msgs[i])
-    DEBUGdrain(`msg: ${msg}`)
+    // DEBUGdrain(`msg: ${msg}`)
 
     processLogMessage(webHookInfo, msg)
   }
@@ -115,6 +114,8 @@ function processLogMessage(webHookInfo, msg) {
   //   component: string
   //   message:   string
   // }
+
+  if (msg.component == "RTR") return
 
   let payload    = {
     text:       `${msg.component}: ${msg.message}`,

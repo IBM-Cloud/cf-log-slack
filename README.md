@@ -1,4 +1,4 @@
-cf-log-slack - loggregator drain that can post to Slack
+cf-log-slack - Cloud Foundry loggregator drain that can post to Slack
 ================================================================================
 
 cf-log-slack is a log drain for the Cloud Foundry loggregator, which can post
@@ -56,7 +56,8 @@ Putting it all together, here's what you might be doing:
 
       cf bind-service cf-log-slack my-channel
 
-* create a new user-provided service log drain
+* create a new user-provided service log drain; note the URL **MUST**
+  be an `https://` URL and not a `http://` URL
 
       cf cups slack-log-drain -l https://<cf-log-slack URL>/my-channel
 
@@ -65,7 +66,7 @@ Putting it all together, here's what you might be doing:
 
       cf bind-service my-favorite-app slack-log-drain
 
-
+* restart things as needed, and watch the fun on Slack
 
 hacking
 ================================================================================

@@ -1,13 +1,13 @@
 {
   "name":               "cf-log-slack",
   "version":            "0.1.0",
-  "description":        "loggregator drain that can post to Slack",
+  "description":        "Cloud Foundry loggregator drain that can post to Slack",
   "author":             "pmuellr",
-  "homepage":           "https://github.com/IBM-Bluemix/log-slack",
+  "homepage":           "https://github.com/IBM-Bluemix/cf-log-slack",
   "license":            "Apache-2.0",
   "repository": {
     "type":             "git",
-    "url" :             "https://github.com/IBM-Bluemix/log-slack.git"
+    "url" :             "https://github.com/IBM-Bluemix/cf-log-slack.git"
   },
   "engines": {
     "iojs":             "1.x"
@@ -21,12 +21,10 @@
   "dependencies": {
     "cfenv":            "1.0.x",
     "concat-stream":    "1.4.x",
-    "hapi":             "8.2.x",
     "request":          "2.53.x",
     "underscore":       "1.8.x"
   },
   "devDependencies": {
-    "bower":            "1.3.x",
     "cakex":            "0.1.x",
     "coffee-script":    "1.9.x",
     "faucet":           "0.0.x",
